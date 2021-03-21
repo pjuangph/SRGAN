@@ -13,26 +13,34 @@ from tqdm import tqdm
 import pytorch_ssim
 from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, display_transform
 from loss import GeneratorLoss
-from model import Generator, Discriminator
+from discriminator_network import Discriminator
+from generator_network import Generator
 
-parser = argparse.ArgumentParser(description='Train Super Resolution Models')
-parser.add_argument('--crop_size', default=88, type=int, help='training images crop size')
-parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
-                    help='super resolution upscale factor')
-parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
+# parser = argparse.ArgumentParser(description='Train Super Resolution Models')
+# parser.add_argument('--crop_size', default=88, type=int, help='training images crop size')
+# parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
+#                     help='super resolution upscale factor')
+# parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
 
 
 if __name__ == '__main__':
-    opt = parser.parse_args()
     
-    CROP_SIZE = opt.crop_size
-    UPSCALE_FACTOR = opt.upscale_factor
-    NUM_EPOCHS = opt.num_epochs
+    CROP_SIZE = 88 # Percentage
+    UPSCALE_FACTOR = 4
+    NUM_EPOCHS = 100
     
-    train_set = TrainDatasetFromFolder('data/DIV2K_train_HR', crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR)
-    val_set = ValDatasetFromFolder('data/DIV2K_valid_HR', upscale_factor=UPSCALE_FACTOR)
-    train_loader = DataLoader(dataset=train_set, num_workers=4, batch_size=64, shuffle=True)
-    val_loader = DataLoader(dataset=val_set, num_workers=4, batch_size=1, shuffle=False)
+    folder = r'D:/datasets/imagenet-object-localization-challenge/imagenet_object_localization_patched2019/ILSVRC\Data/CLS-LOC/'
+    if (os.path.exists('data/loaders.pt')):
+        train_set = TrainDatasetFromFolder(folder + 'train', crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR)
+        val_set = ValDatasetFromFolder(folder + 'val', upscale_factor=UPSCALE_FACTOR)
+        train_loader = DataLoader(dataset=train_set, num_workers=4, batch_size=64, shuffle=True)
+        val_loader = DataLoader(dataset=val_set, num_workers=4, batch_size=1, shuffle=False)
+        data_to_save = {'train_loader':train_loader,"val_loader":val_loader}
+        torch.save(data_to_save,'data/loaders.pt')
+    else:
+        loaders = torch.load('data/loaders.pt')
+        train_loader = loaders['train_loader']
+        val_loader = loaders['val_loader']
     
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))

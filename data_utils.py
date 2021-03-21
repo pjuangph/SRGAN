@@ -1,10 +1,11 @@
-from os import listdir
+import os
 from os.path import join
 
 from PIL import Image
+import torch
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Compose, RandomCrop, ToTensor, ToPILImage, CenterCrop, Resize
-
+torch.manual_seed(17)
 
 def is_image_file(filename):
     return any(filename.endswith(extension) for extension in ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG'])
@@ -37,11 +38,32 @@ def display_transform():
         ToTensor()
     ])
 
+def recursive_search(dataset_dir):        
+    image_filenames = list()
+    subfolders = list()
+    for f in os.scandir(dataset_dir):
+        if f.is_file():
+            if is_image_file(f.path):
+                image_filenames.append(f.path)
+        elif f.is_dir():
+            subfolders.append(f)
+    for dir in subfolders:
+        files, subF = recursive_search(dir)
+        subfolders.extend(subF)
+        image_filenames.extend(files)
+    
+    return image_filenames, subfolders
+
 
 class TrainDatasetFromFolder(Dataset):
+
+
     def __init__(self, dataset_dir, crop_size, upscale_factor):
-        super(TrainDatasetFromFolder, self).__init__()
-        self.image_filenames = [join(dataset_dir, x) for x in listdir(dataset_dir) if is_image_file(x)]
+        '''
+            Folder to grab all images from. If images are nested inside the folders, this will look inside a single directory. 
+        '''
+        super(TrainDatasetFromFolder, self).__init__()        
+        self.image_filenames, _ = recursive_search(dataset_dir)
         crop_size = calculate_valid_crop_size(crop_size, upscale_factor)
         self.hr_transform = train_hr_transform(crop_size)
         self.lr_transform = train_lr_transform(crop_size, upscale_factor)
@@ -54,12 +76,14 @@ class TrainDatasetFromFolder(Dataset):
     def __len__(self):
         return len(self.image_filenames)
 
+    
+    
 
 class ValDatasetFromFolder(Dataset):
     def __init__(self, dataset_dir, upscale_factor):
         super(ValDatasetFromFolder, self).__init__()
         self.upscale_factor = upscale_factor
-        self.image_filenames = [join(dataset_dir, x) for x in listdir(dataset_dir) if is_image_file(x)]
+        self.image_filenames, _ = recursive_search(dataset_dir)
 
     def __getitem__(self, index):
         hr_image = Image.open(self.image_filenames[index])
@@ -67,7 +91,7 @@ class ValDatasetFromFolder(Dataset):
         crop_size = calculate_valid_crop_size(min(w, h), self.upscale_factor)
         lr_scale = Resize(crop_size // self.upscale_factor, interpolation=Image.BICUBIC)
         hr_scale = Resize(crop_size, interpolation=Image.BICUBIC)
-        hr_image = CenterCrop(crop_size)(hr_image)
+        hr_image = CenterCrop(crop_size)(hr_image)                      # This is initializes the centercrop class and forwards an image to it
         lr_image = lr_scale(hr_image)
         hr_restore_img = hr_scale(lr_image)
         return ToTensor()(lr_image), ToTensor()(hr_restore_img), ToTensor()(hr_image)
@@ -82,8 +106,8 @@ class TestDatasetFromFolder(Dataset):
         self.lr_path = dataset_dir + '/SRF_' + str(upscale_factor) + '/data/'
         self.hr_path = dataset_dir + '/SRF_' + str(upscale_factor) + '/target/'
         self.upscale_factor = upscale_factor
-        self.lr_filenames = [join(self.lr_path, x) for x in listdir(self.lr_path) if is_image_file(x)]
-        self.hr_filenames = [join(self.hr_path, x) for x in listdir(self.hr_path) if is_image_file(x)]
+        self.lr_filenames,_ = recursive_search(dataset_dir)
+        self.hr_filenames,_ = recursive_search(dataset_dir)
 
     def __getitem__(self, index):
         image_name = self.lr_filenames[index].split('/')[-1]
