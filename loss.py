@@ -15,6 +15,10 @@ class GeneratorLoss(nn.Module):
         self.tv_loss = TVLoss()
 
     def forward(self, out_labels, out_images, target_images):
+        '''
+            Args
+                out_labels 
+        '''
         # Adversarial Loss
         adversarial_loss = torch.mean(1 - out_labels)
         # Perception Loss

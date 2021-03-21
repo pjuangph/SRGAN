@@ -32,6 +32,18 @@ class Generator(Module):
         block8.append(Conv2d(64, 3, kernel_size=9, padding=4))
         self.block8 = Sequential(*block8)
 
+    def forward(self, x):
+        block1 = self.block1(x)
+        block2 = self.block2(block1)
+        block3 = self.block3(block2)
+        block4 = self.block4(block3)
+        block5 = self.block5(block4)
+        block6 = self.block6(block5)
+        block7 = self.block7(block6)
+        block8 = self.block8(block1 + block7)
+        y = (torch.tanh(block8) + 1) / 2
+        return y
+
 '''Residual block 
 
 '''

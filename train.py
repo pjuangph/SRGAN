@@ -22,19 +22,20 @@ from generator_network import Generator
 #                     help='super resolution upscale factor')
 # parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
 
+torch.autograd.set_detect_anomaly(True)
 
 if __name__ == '__main__':
     
-    CROP_SIZE = 88 # Percentage
+    CROP_SIZE = 400 # (crop size by crop size)
     UPSCALE_FACTOR = 4
     NUM_EPOCHS = 100
     
     folder = r'D:/datasets/imagenet-object-localization-challenge/imagenet_object_localization_patched2019/ILSVRC\Data/CLS-LOC/'
-    if (os.path.exists('data/loaders.pt')):
+    if (not os.path.exists('data/loaders.pt')):
         train_set = TrainDatasetFromFolder(folder + 'train', crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR)
         val_set = ValDatasetFromFolder(folder + 'val', upscale_factor=UPSCALE_FACTOR)
-        train_loader = DataLoader(dataset=train_set, num_workers=4, batch_size=64, shuffle=True)
-        val_loader = DataLoader(dataset=val_set, num_workers=4, batch_size=1, shuffle=False)
+        train_loader = DataLoader(dataset=train_set, batch_size=4, shuffle=True)
+        val_loader = DataLoader(dataset=val_set, batch_size=1, shuffle=False)
         data_to_save = {'train_loader':train_loader,"val_loader":val_loader}
         torch.save(data_to_save,'data/loaders.pt')
     else:
@@ -73,26 +74,25 @@ if __name__ == '__main__':
             ############################
             # (1) Update D network: maximize D(x)-1-D(G(z))
             ###########################
-            real_img = Variable(target)
+            netD.zero_grad()
+            real_img = Variable(target, requires_grad=False)
             if torch.cuda.is_available():
                 real_img = real_img.cuda()
             z = Variable(data)
             if torch.cuda.is_available():
                 z = z.cuda()
             fake_img = netG(z)
-    
-            netD.zero_grad()
-            real_out = netD(real_img).mean()
-            fake_out = netD(fake_img).mean()
-            d_loss = 1 - real_out + fake_out
+                
+            real_out = netD(real_img).mean()    # Discriminator Takes in the real image and predicts whether it's real
+            fake_out = netD(fake_img).mean()    # Discriminator takes in the fake image and predicts if it's fake
+            d_loss = 1 - real_out + fake_out    # Minimizing the loss would mean real_out=1 and fake out = 0. so it knows the real image it knows the fake image
             d_loss.backward(retain_graph=True)
             optimizerD.step()
-    
             ############################
             # (2) Update G network: minimize 1-D(G(z)) + Perception Loss + Image Loss + TV Loss
             ###########################
             netG.zero_grad()
-            g_loss = generator_criterion(fake_out, fake_img, real_img)
+            g_loss = generator_criterion(fake_out.detach(), fake_img, real_img.detach())
             g_loss.backward()
             
             fake_img = netG(z)
@@ -116,15 +116,15 @@ if __name__ == '__main__':
         netG.eval()
         out_path = 'training_results/SRF_' + str(UPSCALE_FACTOR) + '/'
         if not os.path.exists(out_path):
-            os.makedirs(out_path)
+            os.makedirs(out_path, exist_ok=True)
         
         with torch.no_grad():
             val_bar = tqdm(val_loader)
-            valing_results = {'mse': 0, 'ssims': 0, 'psnr': 0, 'ssim': 0, 'batch_sizes': 0}
+            val_results = {'mse': 0, 'ssims': 0, 'psnr': 0, 'ssim': 0, 'batch_sizes': 0}
             val_images = []
             for val_lr, val_hr_restore, val_hr in val_bar:
                 batch_size = val_lr.size(0)
-                valing_results['batch_sizes'] += batch_size
+                val_results['batch_sizes'] += batch_size
                 lr = val_lr
                 hr = val_hr
                 if torch.cuda.is_available():
@@ -133,14 +133,14 @@ if __name__ == '__main__':
                 sr = netG(lr)
         
                 batch_mse = ((sr - hr) ** 2).data.mean()
-                valing_results['mse'] += batch_mse * batch_size
+                val_results['mse'] += batch_mse * batch_size
                 batch_ssim = pytorch_ssim.ssim(sr, hr).item()
-                valing_results['ssims'] += batch_ssim * batch_size
-                valing_results['psnr'] = 10 * log10((hr.max()**2) / (valing_results['mse'] / valing_results['batch_sizes']))
-                valing_results['ssim'] = valing_results['ssims'] / valing_results['batch_sizes']
+                val_results['ssims'] += batch_ssim * batch_size
+                val_results['psnr'] = 10 * log10((hr.max()**2) / (val_results['mse'] / val_results['batch_sizes']))
+                val_results['ssim'] = val_results['ssims'] / val_results['batch_sizes']
                 val_bar.set_description(
                     desc='[converting LR images to SR images] PSNR: %.4f dB SSIM: %.4f' % (
-                        valing_results['psnr'], valing_results['ssim']))
+                        val_results['psnr'], val_results['ssim']))
         
                 val_images.extend(
                     [display_transform()(val_hr_restore.squeeze(0)), display_transform()(hr.data.cpu().squeeze(0)),
@@ -162,8 +162,8 @@ if __name__ == '__main__':
         results['g_loss'].append(running_results['g_loss'] / running_results['batch_sizes'])
         results['d_score'].append(running_results['d_score'] / running_results['batch_sizes'])
         results['g_score'].append(running_results['g_score'] / running_results['batch_sizes'])
-        results['psnr'].append(valing_results['psnr'])
-        results['ssim'].append(valing_results['ssim'])
+        results['psnr'].append(val_results['psnr'])
+        results['ssim'].append(val_results['ssim'])
     
         if epoch % 10 == 0 and epoch != 0:
             out_path = 'statistics/'

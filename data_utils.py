@@ -5,7 +5,15 @@ from PIL import Image
 import torch
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Compose, RandomCrop, ToTensor, ToPILImage, CenterCrop, Resize
+from io import StringIO
+import PIL
 torch.manual_seed(17)
+
+def getImageInfo(filename):
+    w = -1; h = -1
+    with PIL.Image.open(filename) as img:
+        w,h= img.size
+    return w,h
 
 def is_image_file(filename):
     return any(filename.endswith(extension) for extension in ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG'])
@@ -64,6 +72,13 @@ class TrainDatasetFromFolder(Dataset):
         '''
         super(TrainDatasetFromFolder, self).__init__()        
         self.image_filenames, _ = recursive_search(dataset_dir)
+        keep_images = list() 
+        # Get Images large than crop_size
+        for indx,img in enumerate(self.image_filenames): 
+            w,h = getImageInfo(img)
+            if w>crop_size and h >crop_size:
+                keep_images.append(indx)
+        self.image_filenames = self.image_filenames[keep_images]
         crop_size = calculate_valid_crop_size(crop_size, upscale_factor)
         self.hr_transform = train_hr_transform(crop_size)
         self.lr_transform = train_lr_transform(crop_size, upscale_factor)
