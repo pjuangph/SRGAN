@@ -74,7 +74,7 @@ class Discriminator(Module):
         )
         
         self.net2 = Sequential(
-            Linear(512*3*3,1024),
+            Linear(512*5*5,1024),
             LeakyReLU(0.2),
             Linear(1024,1)
         )

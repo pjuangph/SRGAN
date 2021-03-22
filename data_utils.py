@@ -6,14 +6,10 @@ import torch
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Compose, RandomCrop, ToTensor, ToPILImage, CenterCrop, Resize
 from io import StringIO
-import PIL
+from get_image_size import get_image_size
+from tqdm import trange 
 torch.manual_seed(17)
 
-def getImageInfo(filename):
-    w = -1; h = -1
-    with PIL.Image.open(filename) as img:
-        w,h= img.size
-    return w,h
 
 def is_image_file(filename):
     return any(filename.endswith(extension) for extension in ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG'])
@@ -72,18 +68,20 @@ class TrainDatasetFromFolder(Dataset):
         '''
         super(TrainDatasetFromFolder, self).__init__()        
         self.image_filenames, _ = recursive_search(dataset_dir)
-        keep_images = list() 
+        keep_images = list()
+        
         # Get Images large than crop_size
-        for indx,img in enumerate(self.image_filenames): 
-            w,h = getImageInfo(img)
+        for i in trange(len(self.image_filenames),desc='Selecting images that fit crop size'):
+            w,h = get_image_size(self.image_filenames[i])
             if w>crop_size and h >crop_size:
-                keep_images.append(indx)
-        self.image_filenames = self.image_filenames[keep_images]
+                keep_images.append(i)
+        self.image_filenames = [self.image_filenames[i] for i in keep_images]
         crop_size = calculate_valid_crop_size(crop_size, upscale_factor)
         self.hr_transform = train_hr_transform(crop_size)
         self.lr_transform = train_lr_transform(crop_size, upscale_factor)
 
     def __getitem__(self, index):
+        p = Image.open(self.image_filenames[index])
         hr_image = self.hr_transform(Image.open(self.image_filenames[index]))
         lr_image = self.lr_transform(hr_image)
         return lr_image, hr_image
@@ -99,6 +97,7 @@ class ValDatasetFromFolder(Dataset):
         super(ValDatasetFromFolder, self).__init__()
         self.upscale_factor = upscale_factor
         self.image_filenames, _ = recursive_search(dataset_dir)
+
 
     def __getitem__(self, index):
         hr_image = Image.open(self.image_filenames[index])

@@ -5,6 +5,7 @@ from math import log10
 import pandas as pd
 import torch.optim as optim
 import torch.utils.data
+from torch.utils.data import dataset
 import torchvision.utils as utils
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -26,23 +27,27 @@ torch.autograd.set_detect_anomaly(True)
 
 if __name__ == '__main__':
     
-    CROP_SIZE = 400 # (crop size by crop size)
+    CROP_SIZE = 80 # (crop size by crop size)
     UPSCALE_FACTOR = 4
     NUM_EPOCHS = 100
     
+
+    # Make sure the bit depth is 24, 8 = Gray scale
     folder = r'D:/datasets/imagenet-object-localization-challenge/imagenet_object_localization_patched2019/ILSVRC\Data/CLS-LOC/'
-    if (not os.path.exists('data/loaders.pt')):
+    # folder = r'C:/Users/Paht/Downloads/Keras-SRGAN-master/data'
+    if (not os.path.exists('data/dataset.pt')):
         train_set = TrainDatasetFromFolder(folder + 'train', crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR)
-        val_set = ValDatasetFromFolder(folder + 'val', upscale_factor=UPSCALE_FACTOR)
-        train_loader = DataLoader(dataset=train_set, batch_size=4, shuffle=True)
-        val_loader = DataLoader(dataset=val_set, batch_size=1, shuffle=False)
-        data_to_save = {'train_loader':train_loader,"val_loader":val_loader}
-        torch.save(data_to_save,'data/loaders.pt')
+        val_set = ValDatasetFromFolder(folder + 'val', upscale_factor=UPSCALE_FACTOR)        
+        data_to_save = {'train_dataset':train_set,"val_dataset":val_set}
+        torch.save(data_to_save,'data/dataset.pt')
     else:
-        loaders = torch.load('data/loaders.pt')
-        train_loader = loaders['train_loader']
-        val_loader = loaders['val_loader']
-    
+        datasets = torch.load('data/dataset.pt')
+        train_set = datasets['train_dataset']
+        val_set = datasets['val_dataset']
+
+    train_loader = DataLoader(dataset=train_set, batch_size=4, shuffle=True)
+    val_loader = DataLoader(dataset=val_set, batch_size=1, shuffle=False)
+
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
     netD = Discriminator()
