@@ -1,13 +1,12 @@
 import os
-from os.path import join
+import pandas as pd
 from typing import List
 from PIL import Image
 import torch
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Compose, RandomCrop, ToTensor, ToPILImage, CenterCrop, Resize
 from io import StringIO
-from get_image_size import get_image_size
-from tqdm import trange 
+
 torch.manual_seed(17)
 
 
@@ -59,10 +58,14 @@ def recursive_search(dataset_dir):
     
     return image_filenames, subfolders
 
+def create_validation_groups(df:pd.DataFrame):
+    '''
+        Create groups based on validation data, same height, width
+    '''
+    # Loop for all heights that are not duplicates
+    # find images with similar widths 
 
 class TrainDatasetFromList(Dataset):
-
-
     def __init__(self, dataset_list:List[str], crop_size:int, upscale_factor:int):
         '''
             Folder to grab all images from. If images are nested inside the folders, this will look inside a single directory. 

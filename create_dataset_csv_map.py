@@ -60,3 +60,4 @@ if __name__ == '__main__':
             processes.clear()
     df = pd.DataFrame(image_info)
     df.to_pickle('data/dataset_files.pickle')
+    df.to_csv('data/dataset_files.pickle')

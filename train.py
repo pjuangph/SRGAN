@@ -31,7 +31,9 @@ if __name__ == '__main__':
     # Make sure the bit depth is 24, 8 = Gray scale
     df = pd.read_pickle('data/dataset_files.pickle')
     df = df[(df['channels']==3) & (df['width']>100) & (df['height']>100)]
-    train_df, val_df = train_test_split(df, test_size=0.3, random_state=42, shuffle=True)
+    train_df, val_df = train_test_split(df, test_size=0.99, random_state=42, shuffle=True)
+    train_df, val_df = train_test_split(train_df, test_size=0.3, random_state=42, shuffle=True)
+
     train_filenames = train_df['filename'].tolist()
     val_filenames = val_df['filename'].tolist()
     if (not os.path.exists('data/dataset.pt')):
@@ -44,8 +46,8 @@ if __name__ == '__main__':
         train_set = datasets['train_dataset']
         val_set = datasets['val_dataset']
 
-    train_loader = DataLoader(dataset=train_set, batch_size=64,num_workers=8, shuffle=True)
-    val_loader = DataLoader(dataset=val_set, batch_size=1,num_workers=8, shuffle=False)
+    train_loader = DataLoader(dataset=train_set, batch_size=64, shuffle=True)
+    val_loader = DataLoader(dataset=val_set, batch_size=1, shuffle=False)
     
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
