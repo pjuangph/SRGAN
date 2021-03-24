@@ -23,11 +23,11 @@ def get_image_size(filename:str):
     img = imageio.imread(filename)
     if len(img.shape)>2:
         h, w, d = img.shape
-        return {'filename':filename,'height':h,'width':w,'depth':d}
+        return {'filename':filename,'height':h,'width':w,'channels':d}
     else:
         h, w = img.shape
         d=1
-        return {'filename':filename,'height':h,'width':w,'depth':d}
+        return {'filename':filename,'height':h,'width':w,'channels':d}
 
 def evaluate_chunk(L,images):
     image_data = list()
@@ -39,22 +39,24 @@ num_cores = 16
 
 if __name__ == '__main__':
     folder = r'D:/datasets/imagenet-object-localization-challenge/imagenet_object_localization_patched2019/ILSVRC\Data/CLS-LOC/'
+    # folder = r'D:/datasets/VOC2012/JPEGImages'
     images,_ = recursive_search(folder)
 
-    image_chunks = list(chunks(images,5000))                # Breaks the list into chunks of a particular size
+    image_chunks = list(chunks(images,10000))                # Breaks the list into chunks of a particular size
     image_info = list()
     for i in trange(0,len(image_chunks),num_cores):
         with Manager() as manager:
             L = manager.list()  # <-- can be shared between processes.
             processes = list()
             for core in range(num_cores):
-                p = Process(target=evaluate_chunk, args=(L,image_chunks[i+core]))  # Each process runs on a chunk of data
-                p.start()
-                processes.append(p)
+                if (i+core)<len(image_chunks):
+                    p = Process(target=evaluate_chunk, args=(L,image_chunks[i+core]))  # Each process runs on a chunk of data
+                    p.start()
+                    processes.append(p)
 
             for p in processes:
                 p.join()                                    # Joins all the data 
             image_info.extend(L)                            # Adds the data to image_info which will be converted to a dataframe
             processes.clear()
     df = pd.DataFrame(image_info)
-    df.to_csv('data/dataset_files.csv')
+    df.to_pickle('data/dataset_files.pickle')

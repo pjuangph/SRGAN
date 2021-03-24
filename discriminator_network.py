@@ -71,20 +71,14 @@ class Discriminator(Module):
             Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
             BatchNorm2d(512),
             LeakyReLU(0.2),
+
+            AdaptiveAvgPool2d(1),
+            Conv2d(512, 1024, kernel_size=1),   # This is similar to dense because kernel is 1 
+            LeakyReLU(0.2),
+            Conv2d(1024, 1, kernel_size=1)      # should output a single value for each batch 
         )
         
-        self.net2 = Sequential(
-            Linear(512*5*5,1024),
-            LeakyReLU(0.2),
-            Linear(1024,1)
-        )
-
     def forward(self, x):
         batch_size = x.size(0)
-        x1 = self.net(x)
-        # x1 = self.adaptive_avg_pool2D(x)
-        x2 = x1.view(x1.size(0),-1)
-        x3 = self.net2(x2)
-        x4 = torch.sigmoid(x3)
-        return x4 
-        # return torch.sigmoid(self.net(x).view(batch_size))
+        return torch.sigmoid(self.net(x).view(batch_size)) 
+        

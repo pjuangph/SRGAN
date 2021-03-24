@@ -1,6 +1,6 @@
 import os
 from os.path import join
-
+from typing import List
 from PIL import Image
 import torch
 from torch.utils.data.dataset import Dataset
@@ -60,23 +60,15 @@ def recursive_search(dataset_dir):
     return image_filenames, subfolders
 
 
-class TrainDatasetFromFolder(Dataset):
+class TrainDatasetFromList(Dataset):
 
 
-    def __init__(self, dataset_dir, crop_size, upscale_factor):
+    def __init__(self, dataset_list:List[str], crop_size:int, upscale_factor:int):
         '''
             Folder to grab all images from. If images are nested inside the folders, this will look inside a single directory. 
         '''
-        super(TrainDatasetFromFolder, self).__init__()        
-        self.image_filenames, _ = recursive_search(dataset_dir)
-        keep_images = list()
-        
-        # Get Images large than crop_size
-        for i in trange(len(self.image_filenames),desc='Selecting images that fit crop size'):
-            w,h = get_image_size(self.image_filenames[i])
-            if w>crop_size and h >crop_size:
-                keep_images.append(i)
-        self.image_filenames = [self.image_filenames[i] for i in keep_images]
+        super(TrainDatasetFromList, self).__init__()        
+        self.image_filenames = dataset_list
         crop_size = calculate_valid_crop_size(crop_size, upscale_factor)
         self.hr_transform = train_hr_transform(crop_size)
         self.lr_transform = train_lr_transform(crop_size, upscale_factor)
@@ -93,11 +85,11 @@ class TrainDatasetFromFolder(Dataset):
     
     
 
-class ValDatasetFromFolder(Dataset):
-    def __init__(self, dataset_dir, upscale_factor):
-        super(ValDatasetFromFolder, self).__init__()
+class ValDatasetFromList(Dataset):
+    def __init__(self, dataset_list:List[str], upscale_factor:int):
+        super(ValDatasetFromList, self).__init__()
         self.upscale_factor = upscale_factor
-        self.image_filenames, _ = recursive_search(dataset_dir)
+        self.image_filenames = dataset_list
 
 
     def __getitem__(self, index):

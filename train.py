@@ -3,6 +3,8 @@ import os
 from math import log10
 
 import pandas as pd
+from sklearn.model_selection import train_test_split
+import torch 
 import torch.optim as optim
 import torch.utils.data
 from torch.utils.data import dataset
@@ -12,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import pytorch_ssim
-from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, display_transform
+from data_utils import TrainDatasetFromList, ValDatasetFromList, display_transform
 from loss import GeneratorLoss
 from discriminator_network import Discriminator
 from generator_network import Generator
@@ -33,11 +35,14 @@ if __name__ == '__main__':
     
 
     # Make sure the bit depth is 24, 8 = Gray scale
-    folder = r'D:/datasets/imagenet-object-localization-challenge/imagenet_object_localization_patched2019/ILSVRC\Data/CLS-LOC/'
-    # folder = r'C:/Users/Paht/Downloads/Keras-SRGAN-master/data'
+    df = pd.read_pickle('data/dataset_files.pickle')
+    df = df[(df['channels']==3) & (df['width']>100) & (df['height']>100)]
+    train_df, val_df = train_test_split(df, test_size=0.3, random_state=42, shuffle=True)
+    train_filenames = train_df['filename'].tolist()
+    val_filenames = val_df['filename'].tolist()
     if (not os.path.exists('data/dataset.pt')):
-        train_set = TrainDatasetFromFolder(folder + 'train', crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR)
-        val_set = ValDatasetFromFolder(folder + 'val', upscale_factor=UPSCALE_FACTOR)        
+        train_set = TrainDatasetFromList(train_filenames, crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR)
+        val_set = ValDatasetFromList(val_filenames, upscale_factor=UPSCALE_FACTOR)
         data_to_save = {'train_dataset':train_set,"val_dataset":val_set}
         torch.save(data_to_save,'data/dataset.pt')
     else:
@@ -45,7 +50,7 @@ if __name__ == '__main__':
         train_set = datasets['train_dataset']
         val_set = datasets['val_dataset']
 
-    train_loader = DataLoader(dataset=train_set, batch_size=4, shuffle=True)
+    train_loader = DataLoader(dataset=train_set, batch_size=64, shuffle=True)
     val_loader = DataLoader(dataset=val_set, batch_size=1, shuffle=False)
 
     netG = Generator(UPSCALE_FACTOR)
@@ -87,7 +92,7 @@ if __name__ == '__main__':
             if torch.cuda.is_available():
                 z = z.cuda()
             fake_img = netG(z)
-                
+
             real_out = netD(real_img).mean()    # Discriminator Takes in the real image and predicts whether it's real
             fake_out = netD(fake_img).mean()    # Discriminator takes in the fake image and predicts if it's fake
             d_loss = 1 - real_out + fake_out    # Minimizing the loss would mean real_out=1 and fake out = 0. so it knows the real image it knows the fake image
@@ -102,8 +107,7 @@ if __name__ == '__main__':
             
             fake_img = netG(z)
             fake_out = netD(fake_img).mean()
-            
-            
+
             optimizerG.step()
 
             # loss for current batch before optimization 
