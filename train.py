@@ -26,7 +26,7 @@ if __name__ == '__main__':
     CROP_SIZE = 80 # (crop size by crop size)
     UPSCALE_FACTOR = 4
     NUM_EPOCHS = 100
-    ACCUMULATION_STEPS=100
+    ACCUMULATION_STEPS=20
 
     # Make sure the bit depth is 24, 8 = Gray scale
     df = pd.read_pickle('data/dataset_files.pickle')
@@ -44,8 +44,8 @@ if __name__ == '__main__':
         train_set = datasets['train_dataset']
         val_set = datasets['val_dataset']
 
-    train_loader = DataLoader(dataset=train_set, batch_size=64, shuffle=True)
-    val_loader = DataLoader(dataset=val_set, batch_size=1, shuffle=False)
+    train_loader = DataLoader(dataset=train_set, batch_size=64,num_workers=8, shuffle=True)
+    val_loader = DataLoader(dataset=val_set, batch_size=1,num_workers=8, shuffle=False)
     
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
@@ -112,10 +112,10 @@ if __name__ == '__main__':
                 #optimizerG.step()
                 i+=1
                 if (i % ACCUMULATION_STEPS) == 0 or i==len(train_loader):
-                     dscaler.step(optimizerD)
-                     dscaler.update()
-                     gscaler.step(optimizerG)                     
-                     gscaler.update()
+                    dscaler.step(optimizerD)
+                    dscaler.update()
+                    gscaler.step(optimizerG)                     
+                    gscaler.update()
 
                 
                 # loss for current batch before optimization 
