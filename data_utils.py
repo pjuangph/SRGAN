@@ -74,7 +74,6 @@ class TrainDatasetFromList(Dataset):
         self.lr_transform = train_lr_transform(crop_size, upscale_factor)
 
     def __getitem__(self, index):
-        p = Image.open(self.image_filenames[index])
         hr_image = self.hr_transform(Image.open(self.image_filenames[index]))
         lr_image = self.lr_transform(hr_image)
         return lr_image, hr_image
