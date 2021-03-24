@@ -19,20 +19,14 @@ from loss import GeneratorLoss
 from discriminator_network import Discriminator
 from generator_network import Generator
 
-# parser = argparse.ArgumentParser(description='Train Super Resolution Models')
-# parser.add_argument('--crop_size', default=88, type=int, help='training images crop size')
-# parser.add_argument('--upscale_factor', default=4, type=int, choices=[2, 4, 8],
-#                     help='super resolution upscale factor')
-# parser.add_argument('--num_epochs', default=100, type=int, help='train epoch number')
-
-torch.autograd.set_detect_anomaly(True)
+# Speed up Pytorch https://www.reddit.com/r/MachineLearning/comments/kvs1ex/d_here_are_17_ways_of_making_pytorch_training/
 
 if __name__ == '__main__':
     
     CROP_SIZE = 80 # (crop size by crop size)
     UPSCALE_FACTOR = 4
     NUM_EPOCHS = 100
-    
+    ACCUMULATION_STEPS=100
 
     # Make sure the bit depth is 24, 8 = Gray scale
     df = pd.read_pickle('data/dataset_files.pickle')
@@ -52,7 +46,7 @@ if __name__ == '__main__':
 
     train_loader = DataLoader(dataset=train_set, batch_size=64, shuffle=True)
     val_loader = DataLoader(dataset=val_set, batch_size=1, shuffle=False)
-
+    
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
     netD = Discriminator()
@@ -69,58 +63,72 @@ if __name__ == '__main__':
     optimizerD = optim.Adam(netD.parameters())
     
     results = {'d_loss': [], 'g_loss': [], 'd_score': [], 'g_score': [], 'psnr': [], 'ssim': []}
-    
+    dscaler = torch.cuda.amp.GradScaler() # Creates once at the beginning of training #* Discriminator 
+    gscaler = torch.cuda.amp.GradScaler() #* Generator
+
     for epoch in range(1, NUM_EPOCHS + 1):
         train_bar = tqdm(train_loader)
         running_results = {'batch_sizes': 0, 'd_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0}
     
         netG.train()
         netD.train()
+        i=0
         for data, target in train_bar:
-            g_update_first = True
-            batch_size = data.size(0)
-            running_results['batch_sizes'] += batch_size
-    
-            ############################
-            # (1) Update D network: maximize D(x)-1-D(G(z))
-            ###########################
-            netD.zero_grad()
-            real_img = Variable(target, requires_grad=False)
-            if torch.cuda.is_available():
-                real_img = real_img.cuda()
-            z = Variable(data)
-            if torch.cuda.is_available():
-                z = z.cuda()
-            fake_img = netG(z)
+            with torch.cuda.amp.autocast():        # Mix precision
+                g_update_first = True
+                batch_size = data.size(0)
+                running_results['batch_sizes'] += batch_size
+        
+                ############################
+                # (1) Update D network: maximize D(x)-1-D(G(z))
+                ###########################
+                netD.zero_grad()
+                real_img = Variable(target, requires_grad=False)
+                if torch.cuda.is_available():
+                    real_img = real_img.cuda()
+                z = Variable(data)
+                if torch.cuda.is_available():
+                    z = z.cuda()
+                fake_img = netG(z)
 
-            real_out = netD(real_img).mean()    # Discriminator Takes in the real image and predicts whether it's real
-            fake_out = netD(fake_img).mean()    # Discriminator takes in the fake image and predicts if it's fake
-            d_loss = 1 - real_out + fake_out    # Minimizing the loss would mean real_out=1 and fake out = 0. so it knows the real image it knows the fake image
-            d_loss.backward(retain_graph=True)
-            optimizerD.step()
-            ############################
-            # (2) Update G network: minimize 1-D(G(z)) + Perception Loss + Image Loss + TV Loss
-            ###########################
-            netG.zero_grad()
-            g_loss = generator_criterion(fake_out.detach(), fake_img, real_img.detach())
-            g_loss.backward()
-            
-            fake_img = netG(z)
-            fake_out = netD(fake_img).mean()
+                real_out = netD(real_img).mean()    # Discriminator Takes in the real image and predicts whether it's real
+                fake_out = netD(fake_img).mean()    # Discriminator takes in the fake image and predicts if it's fake
+                d_loss = 1 - real_out + fake_out    # Minimizing the loss would mean real_out=1 and fake out = 0. so it knows the real image it knows the fake image
+                dscaler.scale(d_loss/ACCUMULATION_STEPS).backward(retain_graph=True)
 
-            optimizerG.step()
+                # d_loss.backward(retain_graph=True)
+                # optimizerD.step()
+                ############################
+                # (2) Update G network: minimize 1-D(G(z)) + Perception Loss + Image Loss + TV Loss
+                ###########################
+                netG.zero_grad()
+                g_loss = generator_criterion(fake_out.detach(), fake_img, real_img.detach())
+                gscaler.scale(g_loss/ACCUMULATION_STEPS).backward()
 
-            # loss for current batch before optimization 
-            running_results['g_loss'] += g_loss.item() * batch_size
-            running_results['d_loss'] += d_loss.item() * batch_size
-            running_results['d_score'] += real_out.item() * batch_size
-            running_results['g_score'] += fake_out.item() * batch_size
-    
-            train_bar.set_description(desc='[%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f' % (
-                epoch, NUM_EPOCHS, running_results['d_loss'] / running_results['batch_sizes'],
-                running_results['g_loss'] / running_results['batch_sizes'],
-                running_results['d_score'] / running_results['batch_sizes'],
-                running_results['g_score'] / running_results['batch_sizes']))
+                # g_loss.backward()
+                
+                fake_img = netG(z)
+                fake_out = netD(fake_img).mean()
+                #optimizerG.step()
+                i+=1
+                if (i % ACCUMULATION_STEPS) == 0 or i==len(train_loader):
+                     dscaler.step(optimizerD)
+                     dscaler.update()
+                     gscaler.step(optimizerG)                     
+                     gscaler.update()
+
+                
+                # loss for current batch before optimization 
+                running_results['g_loss'] += g_loss.item() * batch_size
+                running_results['d_loss'] += d_loss.item() * batch_size
+                running_results['d_score'] += real_out.item() * batch_size
+                running_results['g_score'] += fake_out.item() * batch_size
+        
+                train_bar.set_description(desc='[%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f' % (
+                    epoch, NUM_EPOCHS, running_results['d_loss'] / running_results['batch_sizes'],
+                    running_results['g_loss'] / running_results['batch_sizes'],
+                    running_results['d_score'] / running_results['batch_sizes'],
+                    running_results['g_score'] / running_results['batch_sizes']))
     
         netG.eval()
         out_path = 'training_results/SRF_' + str(UPSCALE_FACTOR) + '/'
