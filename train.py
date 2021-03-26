@@ -51,10 +51,10 @@ if __name__ == '__main__':
         train_set = datasets['train_dataset']
         val_sets = datasets['val_datasets']
 
-    train_loader = DataLoader(dataset=train_set, batch_size=64, shuffle=True)
+    train_loader = DataLoader(dataset=train_set, batch_size=64, num_workers=8,shuffle=True)
     val_loaders= list()
     for val_set in val_sets:
-        val_loaders.append(DataLoader(dataset=val_set, batch_size=64, shuffle=False))
+        val_loaders.append(DataLoader(dataset=val_set, batch_size=64, num_workers=8, shuffle=False))
     
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
