@@ -6,6 +6,8 @@ import torch
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Compose, RandomCrop, ToTensor, ToPILImage, CenterCrop, Resize
 from io import StringIO
+from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor
 
 torch.manual_seed(17)
 
@@ -42,7 +44,16 @@ def display_transform():
         ToTensor()
     ])
 
-def recursive_search(dataset_dir):        
+def recursive_search(dataset_dir):       
+    '''
+        Recursively search a directory for Images 
+
+        Args
+            dataset_dir - directory to recursively search 
+        
+        Returns
+            image_filenames, subfolders (do not use)
+    ''' 
     image_filenames = list()
     subfolders = list()
     for f in os.scandir(dataset_dir):
@@ -57,6 +68,54 @@ def recursive_search(dataset_dir):
         image_filenames.extend(files)
     
     return image_filenames, subfolders
+
+class DataFrameQuery:
+    '''
+        Class to help query the dataframe for a specific height and width
+    '''
+    def __init__(self,df:pd.DataFrame,df_grouping:pd.DataFrame):
+        '''
+            This saves memory by retaining df and df_grouping
+            df - image dataframe with path to all images and their height, width, channels
+            df_grouping - a dataframe containing height, width, count_of_images
+        '''
+        self.df = df
+        self.df_grouping =df_grouping
+
+    def query_func(self,row_indx):
+        '''
+            Query the dataframe for matching all values height and width
+        '''
+        row = self.df_grouping.iloc[row_indx]
+        return self.df[(self.df['height']==row['height']) & (self.df['width']==row['width'])]
+
+    
+
+def dataframe_find_similar_images(df:pd.DataFrame):
+    '''
+        Finds images in dataframe df - columns height, width, channels that are similar in dimensions
+        https://stackoverflow.com/questions/35268817/unique-combinations-of-values-in-selected-columns-in-pandas-data-frame-and-count
+
+        Returns
+            df_grouping - height, width, count
+            dataframes - a list containing dataframes of common height and width 
+    '''
+
+    df_grouping = df.groupby(['height','width']).size().reset_index().rename(columns={0:'count'})
+    df_grouping.sort_values('count',ascending=False, inplace=True)
+
+    dfq = DataFrameQuery(df,df_grouping)
+    dataframes = None
+    n_cpu = 12 
+    tqdm.pandas()
+    with ProcessPoolExecutor(max_workers=n_cpu) as executor:
+        dataframes = list(
+            tqdm(executor.map(dfq.query_func, range(df_grouping.shape[0]), chunksize=4096*2),
+                    desc=f"Processing {len(df_grouping)} examples on {n_cpu} cores",
+                    total=len(df_grouping)))
+
+    return df_grouping,dataframes
+
 
 def create_validation_groups(df:pd.DataFrame):
     '''

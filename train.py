@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import pytorch_ssim
-from data_utils import TrainDatasetFromList, ValDatasetFromList, display_transform
+from data_utils import TrainDatasetFromList, ValDatasetFromList, display_transform,dataframe_find_similar_images
 from loss import GeneratorLoss
 from discriminator_network import Discriminator
 from generator_network import Generator
@@ -28,26 +28,33 @@ if __name__ == '__main__':
     NUM_EPOCHS = 100
     ACCUMULATION_STEPS=20
 
-    # Make sure the bit depth is 24, 8 = Gray scale
-    df = pd.read_pickle('data/dataset_files.pickle')
-    df = df[(df['channels']==3) & (df['width']>100) & (df['height']>100)]
-    train_df, val_df = train_test_split(df, test_size=0.99, random_state=42, shuffle=True)
-    train_df, val_df = train_test_split(train_df, test_size=0.3, random_state=42, shuffle=True)
-
-    train_filenames = train_df['filename'].tolist()
-    val_filenames = val_df['filename'].tolist()
     if (not os.path.exists('data/dataset.pt')):
+        # Make sure the bit depth is 24, 8 = Gray scale
+        df = pd.read_pickle('data/dataset_files.pickle')
+        df = df[(df['channels']==3) & (df['width']>100) & (df['height']>100)]
+        train_df, val_df = train_test_split(df, test_size=0.2, random_state=42, shuffle=True)
+        _,val_similar = dataframe_find_similar_images(val_df)
+
+        # Create the train dataset 
+        train_filenames = train_df['filename'].tolist()        
         train_set = TrainDatasetFromList(train_filenames, crop_size=CROP_SIZE, upscale_factor=UPSCALE_FACTOR)
-        val_set = ValDatasetFromList(val_filenames, upscale_factor=UPSCALE_FACTOR)
-        data_to_save = {'train_dataset':train_set,"val_dataset":val_set}
+
+        val_sets = list() 
+        for val_df in val_similar:
+            val_filenames = val_df['filename'].tolist()
+            val_set = ValDatasetFromList(val_filenames, upscale_factor=UPSCALE_FACTOR)
+            val_sets.append(val_set)
+        data_to_save = {'train_dataset':train_set,"val_datasets":val_sets}
         torch.save(data_to_save,'data/dataset.pt')
     else:
         datasets = torch.load('data/dataset.pt')
         train_set = datasets['train_dataset']
-        val_set = datasets['val_dataset']
+        val_sets = datasets['val_datasets']
 
     train_loader = DataLoader(dataset=train_set, batch_size=64, shuffle=True)
-    val_loader = DataLoader(dataset=val_set, batch_size=1, shuffle=False)
+    val_loaders= list()
+    for val_set in val_sets:
+        val_loaders.append(DataLoader(dataset=val_set, batch_size=64, shuffle=False))
     
     netG = Generator(UPSCALE_FACTOR)
     print('# generator parameters:', sum(param.numel() for param in netG.parameters()))
@@ -138,40 +145,47 @@ if __name__ == '__main__':
             os.makedirs(out_path, exist_ok=True)
         
         with torch.no_grad():
-            val_bar = tqdm(val_loader)
             val_results = {'mse': 0, 'ssims': 0, 'psnr': 0, 'ssim': 0, 'batch_sizes': 0}
-            val_images = []
-            for val_lr, val_hr_restore, val_hr in val_bar:
-                batch_size = val_lr.size(0)
-                val_results['batch_sizes'] += batch_size
-                lr = val_lr
-                hr = val_hr
-                if torch.cuda.is_available():
-                    lr = lr.cuda()
-                    hr = hr.cuda()
-                sr = netG(lr)
-        
-                batch_mse = ((sr - hr) ** 2).data.mean()
-                val_results['mse'] += batch_mse * batch_size
-                batch_ssim = pytorch_ssim.ssim(sr, hr).item()
-                val_results['ssims'] += batch_ssim * batch_size
-                val_results['psnr'] = 10 * log10((hr.max()**2) / (val_results['mse'] / val_results['batch_sizes']))
-                val_results['ssim'] = val_results['ssims'] / val_results['batch_sizes']
-                val_bar.set_description(
-                    desc='[converting LR images to SR images] PSNR: %.4f dB SSIM: %.4f' % (
-                        val_results['psnr'], val_results['ssim']))
-        
-                val_images.extend(
-                    [display_transform()(val_hr_restore.squeeze(0)), display_transform()(hr.data.cpu().squeeze(0)),
-                     display_transform()(sr.data.cpu().squeeze(0))])
-            val_images = torch.stack(val_images)
-            val_images = torch.chunk(val_images, val_images.size(0) // 15)
-            val_save_bar = tqdm(val_images, desc='[saving training results]')
-            index = 1
-            for image in val_save_bar:
-                image = utils.make_grid(image, nrow=3, padding=5)
-                utils.save_image(image, out_path + 'epoch_%d_index_%d.png' % (epoch, index), padding=5)
-                index += 1
+            for val_loader in val_loaders:
+                val_bar = tqdm(val_loader)                
+                val_images = []
+                for val_lr, val_hr_restore, val_hr in val_bar:
+                    batch_size = val_lr.size(0)
+                    val_results['batch_sizes'] += batch_size
+                    lr = val_lr
+                    hr = val_hr
+                    if torch.cuda.is_available():
+                        lr = lr.cuda()
+                        hr = hr.cuda()
+                    sr = netG(lr)
+            
+                    batch_mse = ((sr - hr) ** 2).data.mean()
+                    val_results['mse'] += batch_mse * batch_size
+                    batch_ssim = pytorch_ssim.ssim(sr, hr).item()
+                    val_results['ssims'] += batch_ssim * batch_size
+                    val_results['psnr'] = 10 * log10((hr.max()**2) / (val_results['mse'] / val_results['batch_sizes']))
+                    val_results['ssim'] = val_results['ssims'] / val_results['batch_sizes']
+                    val_bar.set_description(
+                        desc='[converting LR images to SR images] PSNR: %.4f dB SSIM: %.4f' % (
+                            val_results['psnr'], val_results['ssim']))
+                    
+                    # convert the validation images
+                    val_hr_restore_squeeze = val_hr_restore.squeeze(0)
+                    hr_squeeze = hr.data.cpu().squeeze(0)
+                    sr_squeeze = sr.data.cpu().squeeze(0)
+                    for b in range(batch_size):
+                        val_hr = val_hr_restore_squeeze[b]
+                        hr_temp = hr_squeeze[b]
+                        sr_temp = sr_squeeze[b]
+                        val_images.extend([display_transform()(val_hr), display_transform()(hr_temp),display_transform()(sr_temp)])
+                val_images = torch.stack(val_images)
+                val_images = torch.chunk(val_images, val_images.size(0) // 15)
+                val_save_bar = tqdm(val_images, desc='[saving training results]')
+                index = 1
+                for image in val_save_bar:
+                    image = utils.make_grid(image, nrow=3, padding=5)
+                    utils.save_image(image, out_path + 'epoch_%d_index_%d.png' % (epoch, index), padding=5)
+                    index += 1
     
         # save model parameters
         torch.save(netG.state_dict(), 'epochs/netG_epoch_%d_%d.pth' % (UPSCALE_FACTOR, epoch))

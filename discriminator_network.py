@@ -8,38 +8,10 @@ import math
 
 # https://github.com/deepak112/Keras-SRGAN/blob/7989cda237e01ab6ce3d02c3c2f9ed0cf5f4a612/Network.py#L51
 
-# https://github.com/leftthomas/SRGAN/blob/master/model.py 
-class DiscriminatorBlock(Module):
-    def __init__(self,in_channels:int=64,out_channels:int=64, kernel_size:int=3, stride:int=1):
-        super(DiscriminatorBlock, self).__init__()
-        self.net = Sequential(
-            Conv2d(in_channels,out_channels,
-                kernel_size=kernel_size,stride=stride,padding=1),
-            BatchNorm2d(out_channels),
-            LeakyReLU(0.2)
-        )
-    def forward(self,x):
-        return self.net(x)
 
 class Discriminator(Module):
     def __init__(self,channels:int=64):
         super(Discriminator, self).__init__()
-        # self.net = Sequential(
-        #     Conv2d(3, channels, kernel_size=3, padding=1),
-        #     LeakyReLU(0.2),
-
-        #     DiscriminatorBlock(channels,channels,3,2),      # 64 x 64
-        #     DiscriminatorBlock(channels,2*channels,3,2),    # 64 x 128
-        #     DiscriminatorBlock(2*channels,2*channels,3,2),  # 128 x 128
-        #     DiscriminatorBlock(2*channels,4*channels,3,2),  # 128 x 256
-        #     DiscriminatorBlock(4*channels,4*channels,3,2),  # 256 x 256
-        #     DiscriminatorBlock(4*channels,8*channels,3,2),  # 256 x 512
-        #     DiscriminatorBlock(8*channels,8*channels,3,2),  # 512 x 512
-        #     AdaptiveAvgPool2d(1),                           # Flatten 
-        #     Conv2d(8*channels, 16*channels, kernel_size=1), # Dense 1024
-        #     LeakyReLU(0.2),
-        #     Conv2d(16*channels, 1, kernel_size=1)           # Dense 1024 1 vector 
-        # )
         self.net = Sequential(
             Conv2d(3, 64, kernel_size=3, padding=1),
             LeakyReLU(0.2),
