@@ -125,7 +125,8 @@ if __name__ == '__main__':
                     dscaler.update()
                     gscaler.step(optimizerG)                     
                     gscaler.update()
-
+                    netG.zero_grad()
+                    netD.zero_grad()
                 
                 # loss for current batch before optimization 
                 running_results['g_loss'] += g_loss.item() * batch_size
