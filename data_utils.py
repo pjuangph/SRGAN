@@ -4,7 +4,7 @@ from typing import List
 from PIL import Image
 import torch
 from torch.utils.data.dataset import Dataset
-from torchvision.transforms import Compose, RandomCrop, ToTensor, ToPILImage, CenterCrop, Resize
+from torchvision.transforms import Compose, RandomCrop, ToTensor, ToPILImage, CenterCrop, Resize, InterpolationMode
 from io import StringIO
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor
@@ -91,7 +91,7 @@ class DataFrameQuery:
 
     
 
-def dataframe_find_similar_images(df:pd.DataFrame):
+def dataframe_find_similar_images(df:pd.DataFrame,batch_size=1):
     '''
         Finds images in dataframe df - columns height, width, channels that are similar in dimensions
         https://stackoverflow.com/questions/35268817/unique-combinations-of-values-in-selected-columns-in-pandas-data-frame-and-count
@@ -113,7 +113,7 @@ def dataframe_find_similar_images(df:pd.DataFrame):
             tqdm(executor.map(dfq.query_func, range(df_grouping.shape[0]), chunksize=4096*2),
                     desc=f"Processing {len(df_grouping)} examples on {n_cpu} cores",
                     total=len(df_grouping)))
-
+    dataframes = [df for df in dataframes if len(df)>batch_size]
     return df_grouping,dataframes
 
 
@@ -136,15 +136,12 @@ class TrainDatasetFromList(Dataset):
         self.lr_transform = train_lr_transform(crop_size, upscale_factor)
 
     def __getitem__(self, index):
-        hr_image = self.hr_transform(Image.open(self.image_filenames[index]))
+        hr_image = self.hr_transform(Image.open(self.image_filenames[index]).convert('RGB'))
         lr_image = self.lr_transform(hr_image)
         return lr_image, hr_image
 
     def __len__(self):
         return len(self.image_filenames)
-
-    
-    
 
 class ValDatasetFromList(Dataset):
     def __init__(self, dataset_list:List[str], upscale_factor:int):
@@ -154,11 +151,11 @@ class ValDatasetFromList(Dataset):
 
 
     def __getitem__(self, index):
-        hr_image = Image.open(self.image_filenames[index])
+        hr_image = Image.open(self.image_filenames[index]).convert('RGB')
         w, h = hr_image.size
         crop_size = calculate_valid_crop_size(min(w, h), self.upscale_factor)
-        lr_scale = Resize(crop_size // self.upscale_factor, interpolation=Image.BICUBIC)
-        hr_scale = Resize(crop_size, interpolation=Image.BICUBIC)
+        lr_scale = Resize(crop_size // self.upscale_factor, interpolation=InterpolationMode.BICUBIC)
+        hr_scale = Resize(crop_size, interpolation=InterpolationMode.BICUBIC)
         hr_image = CenterCrop(crop_size)(hr_image)                      # This is initializes the centercrop class and forwards an image to it
         lr_image = lr_scale(hr_image)
         hr_restore_img = hr_scale(lr_image)

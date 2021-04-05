@@ -59,5 +59,4 @@ if __name__ == '__main__':
             image_info.extend(L)                            # Adds the data to image_info which will be converted to a dataframe
             processes.clear()
     df = pd.DataFrame(image_info)
-    df.to_pickle('data/dataset_files.pickle')
-    df.to_csv('data/dataset_files.pickle')
+    df.to_pickle('data/dataset_files.gzip')

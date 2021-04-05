@@ -142,3 +142,4 @@ cython_debug/
 *.pt
 *.pickle
 *.csv
+*.gzip
