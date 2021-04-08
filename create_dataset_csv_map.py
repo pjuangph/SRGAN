@@ -8,6 +8,9 @@ import pandas as pd
 from tqdm import trange
 from multiprocessing import Process, Manager
 import os.path as osp
+import warnings
+
+warnings.filterwarnings('error') 
 
 def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
@@ -20,14 +23,22 @@ def get_image_size(filename:str):
     if (not osp.exists(filename)):
         return {'filename':filename,'height':0,'width':0,'depth':0}
 
-    img = imageio.imread(filename)
-    if len(img.shape)>2:
-        h, w, d = img.shape
-        return {'filename':filename,'height':h,'width':w,'channels':d}
-    else:
-        h, w = img.shape
-        d=1
-        return {'filename':filename,'height':h,'width':w,'channels':d}
+    try:
+        img = imageio.imread(filename)
+        if len(img.shape)>2:
+            h, w, d = img.shape
+            return {'filename':filename,'height':h,'width':w,'channels':d}
+        else:
+            h, w = img.shape
+            d=1
+            return {'filename':filename,'height':h,'width':w,'channels':d}
+    except Exception as e:
+        print('bad image ' + filename + " " + str(e))
+    
+    return {'filename':filename,'height':0,'width':0,'depth':0}
+
+    
+    
 
 def evaluate_chunk(L,images):
     image_data = list()
@@ -42,7 +53,7 @@ if __name__ == '__main__':
     # folder = r'D:/datasets/VOC2012/JPEGImages'
     images,_ = recursive_search(folder)
 
-    image_chunks = list(chunks(images,10000))                # Breaks the list into chunks of a particular size
+    image_chunks = list(chunks(images,5000))                # Breaks the list into chunks of a particular size
     image_info = list()
     for i in trange(0,len(image_chunks),num_cores):
         with Manager() as manager:
